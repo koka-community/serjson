@@ -30,6 +30,12 @@ fun eitherstuff/(==)(a: either<string,stuff>, b: either<string,stuff>): bool
     (Right(aa),Right(bb)) -> aa == bb
     _ -> False
 
+fun either/list/(==)(a: either<string,list<int>>, b: either<string,list<int>>): bool
+  match (a,b)
+    (Left(_aa),Left(_bb)) -> False
+    (Right(aa),Right(bb)) -> aa == bb
+    _ -> False
+
 // valuefn and pfn for thing and stuff
 
 fun thing/valuefn(t: thing)
@@ -121,6 +127,20 @@ pub fun test-serjson()
 
       val reparsed: either<string,stuff> = json.dejson
 
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed)
+
+  basic/scope("lists")
+    scoped/test("empty-list")
+      val s = []
+      val json = s.json(?valuefn=list/make-valuefn(int/valuefn))
+      val reparsed: either<string,list<int>> = json.dejson(?pfn=list/make-pfn(int/pfn))
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed)
+    scoped/test("list of ints")
+      val s = [1,2,3]
+      val json = s.json(?valuefn=list/make-valuefn(int/valuefn))
+      val reparsed: either<string,list<int>> = json.dejson(?pfn=list/make-pfn(int/pfn))
       val expectation = Right(s)
       expect(expectation, fn () reparsed)
 
