@@ -90,9 +90,6 @@ pub fun eithervalue/(==)(a: either<string,value>, b: either<string,value>): bool
     (Right(aa),Right(bb)) -> value/(==)(aa,bb)
     _ -> False
 
-pub alias pfn<t> = (serjson/value) -> parse t
-pub alias valuefn<t> = (t) -> total serjson/value
-
 fun hex-digit()
   char-is("hex-digit", is-hex-digit)
 
@@ -212,8 +209,54 @@ pub fun serjson/pvalue()
 pub fun parse-value(s: string)
   s.slice.parse(serjson/pvalue).either
 
-pub fun dejson<t>(s: string, ?pfn: pfn<t>): total either<string,t>
-  s.slice.parse({serjson/pvalue().?pfn}).either
+// functions to serialize and deserialize values
+
+pub alias pfn<t> = (serjson/value) -> parse t
+pub alias valuefn<t> = (t) -> total serjson/value
+
+pub fun string/valuefn(s: string): total serjson/value
+  String(s)
+pub fun string/pfn(v: serjson/value): parse string
+  match v
+    String(s) -> s
+    _ -> fail("expected string")
+
+pub fun int/valuefn(i: int): total serjson/value
+  Int(i)
+pub fun int/pfn(v: serjson/value): parse int
+  match v
+    Int(i) -> i
+    _ -> fail("expected int")
+
+pub fun bool/valuefn(b: bool): total serjson/value
+  Bool(b)
+pub fun bool/pfn(v: serjson/value): parse bool
+  match v
+    Bool(b) -> b
+    _ -> fail("expected bool")
+
+pub fun null/valuefn(): total serjson/value
+  Null
+pub fun null/pfn(v: serjson/value): parse ()
+  match v
+    Null -> ()
+    _ -> fail("expected null")
+
+pub fun list/make-valuefn<t>(elvfn: valuefn<t>): valuefn<list<t>>
+  fn(l)
+    Array(l.map(elvfn))
+
+pub fun list/make-pfn<t>(elpfn: pfn<t>): pfn<list<t>>
+  fn(v: serjson/value)
+    match v
+      Array(a) -> a.map(elpfn)
+      _ -> fail("expected array")
+ 
+
+// convert values from and to JSON
 
 pub fun json<t>(t: t, ?valuefn: valuefn<t>): total string
   ?valuefn(t).show
+
+pub fun dejson<t>(s: string, ?pfn: pfn<t>): total either<string,t>
+  s.slice.parse({serjson/pvalue().?pfn}).either
