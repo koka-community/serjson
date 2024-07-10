@@ -1,5 +1,6 @@
 module serjson_test
 
+import std/core/maybe
 import std/text/parse 
 import std/test/test
 import serjson
@@ -36,9 +37,9 @@ fun either/list/(==)(a: either<string,list<int>>, b: either<string,list<int>>): 
     (Right(aa),Right(bb)) -> aa == bb
     _ -> False
 
-// valuefn and pfn for thing and stuff
+// vfn and pfn for thing and stuff
 
-fun thing/valuefn(t: thing)
+fun thing/vfn(t: thing)
   Object([
     Object-entry("name", String(t.name))
   ])
@@ -50,11 +51,11 @@ fun thing/pfn(v: value)
         Thing(name)
     _ -> fail("thing: bad json")
 
-fun stuff/valuefn(s: stuff)
+fun stuff/vfn(s: stuff)
   Object([
     Object-entry("foo", Int(s.foo)),
     Object-entry("bar", String(s.bar)),
-    Object-entry("thing", thing/valuefn(s.thing))
+    Object-entry("thing", thing/vfn(s.thing))
   ])
 
 pub fun stuff/pfn(v: value)
@@ -68,7 +69,7 @@ pub fun stuff/pfn(v: value)
     _ -> fail("stuff: bad json")
 
 fun stuff/show(s: stuff)
-  s.json(?valuefn=stuff/valuefn).show
+  s.json(?vfn=stuff/vfn).show
 
 // tests
 
@@ -123,7 +124,7 @@ pub fun test-serjson()
   basic/scope("nested roundtrip")
     scoped/test("stuff-roundtrip")
       val s = Stuff(10, "blah", Thing("graagh"))
-      val json = s.json(?valuefn=stuff/valuefn)
+      val json = s.json(?vfn=stuff/vfn)
 
       val reparsed: either<string,stuff> = json.dejson
 
@@ -133,16 +134,56 @@ pub fun test-serjson()
   basic/scope("lists")
     scoped/test("empty-list")
       val s = []
-      val json = s.json(?valuefn=list/make-valuefn(int/valuefn))
+      val json = s.json(?vfn=list/make-vfn(int/vfn))
       val reparsed: either<string,list<int>> = json.dejson(?pfn=list/make-pfn(int/pfn))
       val expectation = Right(s)
       expect(expectation, fn () reparsed)
     scoped/test("list of ints")
       val s = [1,2,3]
-      val json = s.json(?valuefn=list/make-valuefn(int/valuefn))
+      val json = s.json(?vfn=list/make-vfn(int/vfn))
       val reparsed: either<string,list<int>> = json.dejson(?pfn=list/make-pfn(int/pfn))
       val expectation = Right(s)
       expect(expectation, fn () reparsed)
+
+  basic/scope("maybes")
+    scoped/test("nothing")
+      val s = Nothing
+      val json = s.json(?vfn=maybe/make-vfn(int/vfn))
+      val reparsed: either<string,maybe<int>> = json.dejson(?pfn=maybe/make-pfn(int/pfn))
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed, ?(==)=either-maybe-int/(==))
+    scoped/test("just")
+      val s = Just(10)
+      val json = s.json(?vfn=maybe/make-vfn(int/vfn))
+      val reparsed: either<string,maybe<int>> = json.dejson(?pfn=maybe/make-pfn(int/pfn))
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed)
+
+  basic/scope("eithers")
+    scoped/test("left")
+      val s = Left("foo")
+      val json = s.json(?vfn=either/make-vfn(string/vfn, int/vfn))
+      val reparsed: either<string,either<string,int>> = json.dejson(?pfn=either/make-pfn(string/pfn, int/pfn))
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed)
+    scoped/test("right")
+      val s = Right(10)
+      val json = s.json(?vfn=either/make-vfn(string/vfn, int/vfn))
+      val reparsed: either<string,either<string,int>> = json.dejson(?pfn=either/make-pfn(string/pfn, int/pfn))
+      val expectation = Right(s)
+      expect(expectation, fn () reparsed)
+
+fun either-maybe-int/(==)(a: either<string,maybe<int>>, b: either<string,maybe<int>>): bool
+  match (a,b)
+    (Right(Just(aa)),Right(Just(bb))) -> aa == bb
+    (Right(Nothing),Right(Nothing)) -> True
+    _ -> False
+
+fun either-either-int/(==)(a: either<string,either<string,int>>, b: either<string,either<string,int>>): bool
+  match (a,b)
+    (Right(Left(aa)),Right(Left(bb))) -> aa == bb
+    (Right(Right(aa)),Right(Right(bb))) -> aa == bb
+    _ -> False
 
 // examples
 
