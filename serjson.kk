@@ -13,10 +13,10 @@ module serjson
 //
 // It can serialize and deserialize nested structures to/from JSON with the 
 // provision of two functions:
-//   valuefn<t> = (t) -> div serjson/value
+//   vfn<t> = (t) -> div serjson/value
 //   pfn<t> = (serjson/value) -> <div,parse> t
 // 
-// valuefn takes a t and returns a serjson/value, while pfn takes a serjson/value
+// vfn takes a t and returns a serjson/value, while pfn takes a serjson/value
 // and returns a t (or fails the parse)
 //
 // given those functions, provided as implicit values, a value can be serialized
@@ -27,6 +27,7 @@ module serjson
 
 import std/core/either
 import std/core/list
+import std/core/string
 import std/core/undiv
 import std/text/parse 
 
@@ -46,9 +47,27 @@ pub type value
 fun object-entry/show'(e: object-entry) : div string
   "\"" ++ e.key ++ "\": " ++ e.value.show'
 
+// quote a char for JSON
+fun quote-char(c: char): string
+  match c
+    '"' -> "\\\""
+    '\\' -> "\\\\"
+    // '/' -> "\\/"
+    // 'b' -> "\\b"
+    // 'f' -> "\\f"
+    '\n' -> "\\n"
+    '\r' -> "\\r"
+    '\t' -> "\\t"
+    // 'u' -> "\\u"
+    _ -> c.string
+
+// quote " and \ characters in a string
+fun quote-string(s: string): string
+  s.list.map(quote-char).join
+
 fun value/show'(v: value) : div string
   match v
-    String(s) -> "\"" ++ s ++ "\""
+    String(s) -> "\"" ++ s.quote-string ++ "\""
     Int(i) -> i.show
     Bool(b) -> if b then "true" else "false"
     Null -> "null"
@@ -115,9 +134,9 @@ fun is-json-string-char(c)
   && c != '\\'
   && !is-control(c)
 
-fun json-string-chars()
+fun json-string-char()
   parse/(||)(
-    {chars-are("json-string-chars", is-json-string-char).string}, 
+    {char-is("json-string-chars", is-json-string-char).string}, 
     {quoted-char().string}
   )
 
@@ -126,7 +145,7 @@ fun double-quote()
 
 fun json-string()
   double-quote()
-  val str = many(json-string-chars).join
+  val str = many(json-string-char).join
   double-quote()
   str
 
@@ -211,52 +230,79 @@ pub fun parse-value(s: string)
 
 // functions to serialize and deserialize values
 
-pub alias pfn<t> = (serjson/value) -> parse t
-pub alias valuefn<t> = (t) -> total serjson/value
+pub alias vfn<t> = (t) -> total value
+pub alias pfn<t> = (value) -> parse t
+// need effect-polymorphic versions to allow dismissal of the inferred div 
+// effect in recursive HOF cases
+pub alias pvfn<t,e> = (t) -> e value
+pub alias ppfn<t,e> = (value) -> <parse|e> t
 
-pub fun string/valuefn(s: string): total serjson/value
+pub fun string/vfn(s: string): total serjson/value
   String(s)
 pub fun string/pfn(v: serjson/value): parse string
   match v
     String(s) -> s
     _ -> fail("expected string")
 
-pub fun int/valuefn(i: int): total serjson/value
+pub fun int/vfn(i: int): total serjson/value
   Int(i)
 pub fun int/pfn(v: serjson/value): parse int
   match v
     Int(i) -> i
     _ -> fail("expected int")
 
-pub fun bool/valuefn(b: bool): total serjson/value
+pub fun bool/vfn(b: bool): total serjson/value
   Bool(b)
 pub fun bool/pfn(v: serjson/value): parse bool
   match v
     Bool(b) -> b
     _ -> fail("expected bool")
 
-pub fun null/valuefn(): total serjson/value
+pub fun null/vfn(): total serjson/value
   Null
 pub fun null/pfn(v: serjson/value): parse ()
   match v
     Null -> ()
     _ -> fail("expected null")
 
-pub fun list/make-valuefn<t>(elvfn: valuefn<t>): valuefn<list<t>>
+pub fun list/make-vfn<t,e>(elvfn: pvfn<t,e>): pvfn<list<t>,e>
   fn(l)
     Array(l.map(elvfn))
-
-pub fun list/make-pfn<t>(elpfn: pfn<t>): pfn<list<t>>
+pub fun list/make-pfn<t>(elpfn: ppfn<t,e>): ppfn<list<t>,e>
   fn(v: serjson/value)
     match v
       Array(a) -> a.map(elpfn)
       _ -> fail("expected array")
+
+pub fun maybe/make-vfn<t>(vfn: pvfn<t,e>): pvfn<maybe<t>,e>
+  fn(m)
+    match m
+      Just(v) -> Object([Object-entry("Just", vfn(v))])
+      Nothing -> Object([Object-entry("Nothing", Null)])
+pub fun maybe/make-pfn<t>(pfn: ppfn<t,e>): ppfn<maybe<t>,e>
+  fn(v: serjson/value)
+    match v
+      Object([Object-entry("Just", v)]) -> Just(pfn(v))
+      Object([Object-entry("Nothing", Null)]) -> Nothing
+      _ -> fail("expected maybe")
+
+pub fun either/make-vfn<t,u>(lvfn: pvfn<t,e>, rvfn: pvfn<u,e>): pvfn<either<t,u>,e>
+  fn(e)
+    match e
+      Left(v) -> Object([Object-entry("Left", lvfn(v))])  
+      Right(v) -> Object([Object-entry("Right", rvfn(v))])
+pub fun either/make-pfn<t,u>(lpfn: ppfn<t,e>, rpfn: ppfn<u,e>): ppfn<either<t,u>,e>
+  fn(v: serjson/value)
+    match v
+      Object([Object-entry("Left", v)]) -> Left(lpfn(v))
+      Object([Object-entry("Right", v)]) -> Right(rpfn(v))
+      _ -> fail("expected either")
  
 
 // convert values from and to JSON
 
-pub fun json<t>(t: t, ?valuefn: valuefn<t>): total string
-  ?valuefn(t).show
+pub fun json<t>(t: t, ?vfn: vfn<t>): total string
+  ?vfn(t).show
 
 pub fun dejson<t>(s: string, ?pfn: pfn<t>): total either<string,t>
   s.slice.parse({serjson/pvalue().?pfn}).either
