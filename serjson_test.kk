@@ -187,6 +187,20 @@ fun either-either-int/(==)(a: either<string,either<string,int>>, b: either<strin
 
 // examples
 
+pub fun example-double-encode-string()
+  val sj = "foo".json
+  sj.println
+  val sjj = sj.json
+  sjj.println
+  val either-sj' = sjj.dejson(?pfn=string/pfn)
+  match either-sj'
+    Right(sj') ->       
+      val either-s' = sj'.dejson(?pfn=string/pfn)
+      match either-s'
+        Right(s') -> s'.println
+        Left(e) -> e.println
+    Left(e) -> e.println
+
 pub fun example-value-parse()
   "{\"foo\": [1,\"two\",true,{\"bar\": 200}]}".parse-value.show
 

@@ -27,6 +27,7 @@ module serjson
 
 import std/core/either
 import std/core/list
+import std/core/string
 import std/core/undiv
 import std/text/parse 
 
@@ -46,9 +47,27 @@ pub type value
 fun object-entry/show'(e: object-entry) : div string
   "\"" ++ e.key ++ "\": " ++ e.value.show'
 
+// quote a char for JSON
+fun quote-char(c: char): string
+  match c
+    '"' -> "\\\""
+    '\\' -> "\\\\"
+    // '/' -> "\\/"
+    // 'b' -> "\\b"
+    // 'f' -> "\\f"
+    '\n' -> "\\n"
+    '\r' -> "\\r"
+    '\t' -> "\\t"
+    // 'u' -> "\\u"
+    _ -> c.string
+
+// quote " and \ characters in a string
+fun quote-string(s: string): string
+  s.list.map(quote-char).join
+
 fun value/show'(v: value) : div string
   match v
-    String(s) -> "\"" ++ s ++ "\""
+    String(s) -> "\"" ++ s.quote-string ++ "\""
     Int(i) -> i.show
     Bool(b) -> if b then "true" else "false"
     Null -> "null"
@@ -115,9 +134,9 @@ fun is-json-string-char(c)
   && c != '\\'
   && !is-control(c)
 
-fun json-string-chars()
+fun json-string-char()
   parse/(||)(
-    {chars-are("json-string-chars", is-json-string-char).string}, 
+    {char-is("json-string-chars", is-json-string-char).string}, 
     {quoted-char().string}
   )
 
@@ -126,7 +145,7 @@ fun double-quote()
 
 fun json-string()
   double-quote()
-  val str = many(json-string-chars).join
+  val str = many(json-string-char).join
   double-quote()
   str
 
